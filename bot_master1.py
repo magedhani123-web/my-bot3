@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-👑 ULTIMATE IMPERIAL VIEWER - ALL-IN-ONE EDITION
-المطور: تحسين شامل لضمان احتساب المشاهدات 100%
-"""
 
 import os
 import time
@@ -11,8 +7,6 @@ import random
 import shutil
 import tempfile
 import sys
-import socket
-import json
 import requests
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
@@ -21,10 +15,12 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
 
 # ==========================================
-# ⚙️ الإعدادات الأساسية
+# ⚙️ الإعدادات الكبرى
 # ==========================================
+MAX_SESSIONS = 1000000 
 TOR_PROXY = "socks5://127.0.0.1:9050"
 
+# قائمة الأجهزة المتطورة والشاملة
 DEVICES = [
     {"name": "iPhone 16 Pro Max", "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1", "plat": "iPhone", "w": 430, "h": 932, "mobile": True},
     {"name": "iPhone 15 Pro", "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1", "plat": "iPhone", "w": 393, "h": 852, "mobile": True},
@@ -44,170 +40,149 @@ VIDEOS_POOL = [
     {"id": "AvH9Ig3A0Qo", "keywords": "Socotra treasure island"}
 ]
 
-LOCATIONS = [
-    {"city": "Riyadh", "lat": 24.7136, "lon": 46.6753, "tz": "Asia/Riyadh", "lang": "ar-SA"},
-    {"city": "Dubai", "lat": 25.2048, "lon": 55.2708, "tz": "Asia/Dubai", "lang": "ar-AE"},
-    {"city": "New York", "lat": 40.7128, "lon": -74.0060, "tz": "America/New_York", "lang": "en-US"}
-]
-
 # ==========================================
-# 🛠️ أدوات النظام والشبكة
+# 🛠️ ميزة الربط بالـ IP (اللغة، الوقت، الموقع)
 # ==========================================
-def get_current_ip():
+def get_geo_info():
+    """جلب بيانات الموقع الجغرافي بناءً على IP الـ Tor الحالي"""
     try:
         proxies = {'http': TOR_PROXY, 'https': TOR_PROXY}
-        response = requests.get('https://api.ipify.org', proxies=proxies, timeout=10)
-        return response.text
+        r = requests.get('http://ip-api.com/json/', proxies=proxies, timeout=15).json()
+        if r['status'] == 'success':
+            return {
+                "ip": r['query'],
+                "lat": r['lat'],
+                "lon": r['lon'],
+                "tz": r['timezone'],
+                "lang": r['countryCode'].lower()
+            }
     except:
-        return "Direct (Tor Failed)"
+        return None
 
-def inject_advanced_stealth(driver, dev, loc):
-    # ميزة البطارية المطلوبة
-    batt = random.choice([1.0, 0.45, 0.78, 0.34, 0.62, 0.80, 0.25])
-    # محاكاة سرعة الإنترنت (بين 2MB و 50MB)
-    net_speed = random.choice([2, 5, 10, 25, 50])
+def apply_imperial_stealth(driver, device, geo):
+    """تزييف الهوية والبطارية المتغيرة عشوائياً"""
+    # توليد نسبة عشوائية بين 25% و 100%
+    batt_level = round(random.uniform(0.25, 1.0), 2)
+    # تبديل حالة الشحن عشوائياً (True لـ جاري الشحن، False لـ البطارية)
+    is_charging = random.choice(["true", "false"])
     
-    js_code = f"""
-    // البطارية
+    lang_code = f"{geo['lang']}-{geo['lang'].upper()}" if geo else "en-US"
+    
+    js = f"""
+    // 1. تزييف المنطقة الزمنية
+    if (Intl && Intl.DateTimeFormat) {{
+        const oldResolvedOptions = Intl.DateTimeFormat.prototype.resolvedOptions;
+        Intl.DateTimeFormat.prototype.resolvedOptions = function() {{
+            let opt = oldResolvedOptions.call(this);
+            opt.timeZone = '{geo['tz'] if geo else 'UTC'}';
+            return opt;
+        }};
+    }}
+
+    // 2. تزييف اللغة
+    Object.defineProperty(navigator, 'language', {{get: () => '{lang_code}'}});
+    Object.defineProperty(navigator, 'languages', {{get: () => ['{lang_code}', 'en']}});
+
+    // 3. تزييف البطارية المتغيرة والموقع والأتمتة
+    Object.defineProperty(navigator, 'webdriver', {{get: () => undefined}});
     if (navigator.getBattery) {{
-        navigator.getBattery = () => Promise.resolve({{
-            charging: true, level: {batt}, chargingTime: 0, dischargingTime: Infinity
+        navigator.getBattery = () => Promise.resolve({{ 
+            charging: {is_charging}, 
+            level: {batt_level},
+            chargingTime: 0,
+            dischargingTime: Infinity
         }});
     }}
-    // الموقع واللغة
-    Object.defineProperty(navigator, 'languages', {{get: () => ['{loc['lang']}', 'en-US']}});
-    Object.defineProperty(navigator, 'platform', {{get: () => '{dev["plat"]}'}});
-    // سرعة الإنترنت
-    Object.defineProperty(navigator, 'connection', {{get: () => ({{effectiveType: '{random.choice(['4g', '3g'])}', downlink: {net_speed}, rtt: 50}})}});
-    // حماية ضد كشف الأتمتة
-    Object.defineProperty(navigator, 'webdriver', {{get: () => undefined}});
+    navigator.geolocation.getCurrentPosition = (s) => s({{
+        coords: {{ latitude: {geo['lat'] if geo else 0}, longitude: {geo['lon'] if geo else 0}, accuracy: 10 }}
+    }});
     """
-    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {"source": js_code})
+    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {"source": js})
 
 # ==========================================
-# 🚀 إنشاء المتصفح (متصفح واحد في كل مرة)
+# 📺 محرك الجلسات (المشاهدة والتبديل)
 # ==========================================
-def create_imperial_browser(dev, loc):
-    profile_dir = tempfile.mkdtemp(prefix="imperial_")
-    options = uc.ChromeOptions()
+def run_session(session_num):
+    os.system("pkill -f chrome 2>/dev/null || true")
     
+    geo_data = get_geo_info()
+    if geo_data:
+        print(f"\n🌍 جلسة #{session_num} | IP: {geo_data['ip']} | الدولة: {geo_data['lang'].upper()}")
+    
+    device = random.choice(DEVICES)
+    video = random.choice(VIDEOS_POOL)
+    profile_dir = tempfile.mkdtemp(prefix="imperial_")
+    
+    options = uc.ChromeOptions()
     options.add_argument(f'--user-data-dir={profile_dir}')
-    options.add_argument(f'--user-agent={dev["ua"]}')
+    options.add_argument(f'--user-agent={device["ua"]}')
     options.add_argument(f'--proxy-server={TOR_PROXY}')
-    options.add_argument(f"--window-size={dev['w']},{dev['h']}")
+    options.add_argument(f"--window-size={device['w']},{device['h']}")
+    
+    if geo_data:
+        options.add_argument(f'--lang={geo_data["lang"]}')
+    
     options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--disable-gpu')
 
     try:
         driver = uc.Chrome(options=options, use_subprocess=True)
-        driver.set_page_load_timeout(60)
-        inject_advanced_stealth(driver, dev, loc)
-        return driver, profile_dir
-    except Exception as e:
-        print(f"❌ خطأ في إنشاء المتصفح: {e}")
-        return None, profile_dir
-
-# ==========================================
-# 📺 نظام المشاهدة الذكي
-# ==========================================
-def watch_video_flow(driver, video_data, session_num):
-    try:
+        apply_imperial_stealth(driver, device, geo_data)
         wait = WebDriverWait(driver, 30)
-        
-        # 1. فتح يوتيوب وتخطي الموافقة
+
+        # 2. تخطي شاشة الموافقة
         driver.get("https://www.youtube.com")
-        time.sleep(4)
+        time.sleep(5)
         try:
-            btns = driver.find_elements(By.TAG_NAME, "button")
-            for b in btns:
-                if "Accept" in b.text or "Reject" in b.text: b.click(); break
+            btns = driver.find_elements(By.XPATH, "//button[contains(.,'Accept all') or contains(.,'موافق') or contains(.,'Agree')]")
+            if btns: btns[0].click()
         except: pass
 
-        # 2. الانتقال للفيديو المباشر
-        print(f"🎬 تشغيل: {video_data['keywords']}")
-        driver.get(f"https://www.youtube.com/watch?v={video_data['id']}")
-        
-        # 3. تفعيل الصوت والسرعة (2x لتسريع العملية)
-        video_el = wait.until(EC.presence_of_element_located((By.TAG_NAME, "video")))
-        driver.execute_script("""
-            var v = document.querySelector('video');
-            v.muted = false; 
-            v.volume = 0.5;
-            v.playbackRate = 2.0;
-            v.play();
-        """)
-        print("🔊 الصوت مفعل | ⚡ السرعة: 2x")
-
-        # 4. مدة المشاهدة الأساسية
-        watch_time = random.randint(90, 150)
-        print(f"⏳ مشاهدة لمدة {watch_time} ثانية...")
-        time.sleep(watch_time)
-
-        # 5. ميزة الفيديو المقترح (آخر 20 ثانية)
+        # 3. البحث والتشغيل
         try:
-            print("🔗 الانتقال لفيديو مقترح لتعزيز الأمان...")
-            recs = driver.find_elements(By.CSS_SELECTOR, "a.ytd-thumbnail")
-            if recs:
-                recs[0].click()
-                time.sleep(5)
-                # القفز لآخر 20 ثانية
-                driver.execute_script("var v = document.querySelector('video'); v.currentTime = v.duration - 22;")
+            search_box = wait.until(EC.presence_of_element_located((By.NAME, "search_query")))
+            for char in video['keywords']:
+                search_box.send_keys(char)
+                time.sleep(0.1)
+            search_box.send_keys(Keys.ENTER)
+            video_el = wait.until(EC.element_to_be_clickable((By.XPATH, f"//a[contains(@href, '{video['id']}')]")))
+            video_el.click()
+        except:
+            driver.get(f"https://www.youtube.com/watch?v={video['id']}")
+
+        # 4. فتح الصوت
+        wait.until(EC.presence_of_element_located((By.TAG_NAME, "video")))
+        driver.execute_script("document.querySelector('video').muted = false; document.querySelector('video').volume = 0.5;")
+        
+        speed = random.choice([1.25, 1.5, 2.0])
+        driver.execute_script(f"document.querySelector('video').playbackRate = {speed};")
+        driver.execute_script("document.querySelector('video').play();")
+
+        # 5. مدة المشاهدة
+        watch_time = random.randint(110, 180)
+        time.sleep(watch_time)
+        
+        # 6. كتم الصوت ومشاهدة مقترح
+        driver.execute_script("document.querySelector('video').muted = true;")
+        try:
+            suggestions = driver.find_elements(By.CSS_SELECTOR, "a.ytd-thumbnail")
+            if suggestions:
+                suggestions[0].click()
                 time.sleep(20)
         except: pass
 
-        # 6. كتم الصوت قبل الإغلاق
-        driver.execute_script("document.querySelector('video').muted = true;")
-        return True
+        print(f"✅ انتهت الجلسة {session_num} بنجاح.")
+        driver.quit()
+
     except Exception as e:
-        print(f"⚠️ خطأ أثناء المشاهدة: {str(e)[:50]}")
-        return False
-
-# ==========================================
-# 🏁 التشغيل الرئيسي
-# ==========================================
-def main():
-    os.system("clear")
-    print("="*60)
-    print("👑 IMPERIAL HYBRID VIEWER - ULTIMATE EDITION")
-    print("="*60)
-    
-    session = 1
-    while True:
-        # التأكد من عدم وجود متصفحات قديمة عالقة
-        os.system("pkill -f chrome 2>/dev/null || true")
-        
-        current_ip = get_current_ip()
-        dev = random.choice(DEVICES)
-        loc = random.choice(LOCATIONS)
-        vid = random.choice(VIDEOS_POOL)
-
-        print(f"\n🚀 [الجلسة {session}]")
-        print(f"🌐 IP الحالي: {current_ip}")
-        print(f"📱 الجهاز: {dev['name']} | 🔋 البطارية عشوائية")
-        print(f"📍 الموقع: {loc['city']}")
-
-        driver, p_dir = create_imperial_browser(dev, loc)
-        
-        if driver:
-            success = watch_video_flow(driver, vid, session)
-            driver.quit()
-            if success: print(f"✅ انتهت الجلسة {session} بنجاح")
-            else: print(f"❌ فشلت الجلسة {session}")
-        
-        # تنظيف الملفات المؤقتة
-        if os.path.exists(p_dir): shutil.rmtree(p_dir, ignore_errors=True)
-        
-        # استراحة قصيرة جداً لضمان التسريع
-        wait_gap = random.randint(5, 10)
-        print(f"😴 انتظار {wait_gap} ثانية قبل الجلسة التالية...")
-        time.sleep(wait_gap)
-        session += 1
+        print(f"❌ تعثرت الجلسة: {str(e)[:30]}")
+    finally:
+        if os.path.exists(profile_dir):
+            shutil.rmtree(profile_dir, ignore_errors=True)
 
 if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("\n🛑 تم إيقاف السكربت بواسطة المستخدم.")
-        sys.exit()
+    for i in range(1, MAX_SESSIONS + 1):
+        run_session(i)
+        time.sleep(random.randint(5, 10))
+        if os.path.exists("stop.txt"): break
