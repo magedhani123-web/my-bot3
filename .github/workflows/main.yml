@@ -1,35 +1,42 @@
 name: Run My Bot Forever
 
 on:
-  workflow_dispatch: # تشغيل يدوي
+  workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *' # تشغيل تلقائي كاحتياط كل 6 ساعات
+    - cron: '0 */6 * * *'
 
 permissions:
-  actions: write # ضروري جداً لإعادة التشغيل الذاتي
+  actions: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     env:
       PYTHONUNBUFFERED: "1"
-      # تخصيص ذاكرة أكبر للمعالجة
-      NODE_OPTIONS: "--max-old-space-size=4096"
+      # تخصيص ذاكرة افتراضية للمعالجة لضمان عدم الانهيار
+      NODE_OPTIONS: "--max-old-space-size=8192"
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Maximize CPU & RAM Performance
+        # هذا الجزء يقوم بإنشاء Swap File لزيادة الرام وتفريغ مساحة المعالج
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo fallocate -l 8G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          sudo sysctl vm.swappiness=10
+          echo "🚀 RAM Capacity Boosted with 8GB Swap & CPU Cleaned"
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
-
-      - name: Maximize CPU Performance
-        run: |
-          # تحسين أداء المعالج للسيرفر
-          sudo sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="/&mitigations=off /' /etc/default/grub || true
-          echo "🚀 CPU Optimized"
 
       - name: Install Google Chrome Stable
         run: |
@@ -40,7 +47,6 @@ jobs:
       - name: Install System Dependencies
         run: |
           sudo apt-get update
-          # تثبيت المكتبات الصوتية والرسومية المتوافقة مع الإصدار الجديد
           sudo apt-get install -y tor xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libasound2t64 ffmpeg
           pip install undetected_chromedriver selenium requests
 
@@ -49,17 +55,16 @@ jobs:
           sudo service tor stop || true
           sudo bash -c 'echo -e "ControlPort 9051\nCookieAuthentication 0\nDataDirectory /var/lib/tor" > /etc/tor/torrc'
           sudo service tor start
-          echo "⏳ Waiting for Tor..."
           sleep 20
 
-      - name: Start Bot (High Performance & GUI Fix)
+      - name: Start Bot (Max Resource Allocation)
         run: |
-          # الحل النهائي لخطأ cannot connect to chrome عبر تهيئة DISPLAY وشاشة وهمية ثابتة
           export DISPLAY=:99
-          timeout 350m xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24 -ac +extension GLX +render -noreset" python -u bot_master1.py || echo "⚠️ Session limit reached or ended"
+          # استخدام شاشة وهمية بمتطلبات أقل لرفع سرعة المعالجة للفيديو
+          timeout 350m xvfb-run --auto-servernum --server-args="-screen 0 1280x720x16 -ac +extension GLX +render -noreset" python -u bot_master1.py || echo "⚠️ Restarting..."
 
       - name: Self-Restart Workflow
-        if: always() # يضمن إعادة التشغيل حتى لو فشل البوت
+        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
