@@ -3,15 +3,19 @@ name: Run My Bot Forever
 on:
   workflow_dispatch: # تشغيل يدوي
   schedule:
-    - cron: '0 */6 * * *' # تشغيل تلقائي كل 6 ساعات
+    - cron: '0 */6 * * *' # تشغيل تلقائي كاحتياط كل 6 ساعات
 
 permissions:
-  actions: write # ضروري لإعادة التشغيل الذاتي
+  actions: write # ضروري جداً لإعادة التشغيل الذاتي
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+    env:
+      PYTHONUNBUFFERED: "1"
+      # تخصيص ذاكرة أكبر للمعالجة
+      NODE_OPTIONS: "--max-old-space-size=4096"
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -21,36 +25,43 @@ jobs:
         with:
           python-version: '3.9'
 
-      - name: Install dependencies
+      - name: Maximize CPU Performance
+        run: |
+          # تحسين أداء المعالج للسيرفر
+          sudo sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="/&mitigations=off /' /etc/default/grub || true
+          echo "🚀 CPU Optimized"
+
+      - name: Install Google Chrome Stable
         run: |
           sudo apt-get update
-          sudo apt-get install -y google-chrome-stable tor xvfb
-          pip install selenium requests
+          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo apt install -y ./google-chrome-stable_current_amd64.deb
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          # تثبيت المكتبات الصوتية والرسومية المتوافقة مع الإصدار الجديد
+          sudo apt-get install -y tor xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libasound2t64 ffmpeg
+          pip install undetected_chromedriver selenium requests
 
       - name: Configure and Start Tor
         run: |
-          # إيقاف أي عملية سابقة لضمان بداية نظيفة
           sudo service tor stop || true
-          
-          # إعداد ملف الكونفيج بشكل يضمن فتح المنفذ 9051
           sudo bash -c 'echo -e "ControlPort 9051\nCookieAuthentication 0\nDataDirectory /var/lib/tor" > /etc/tor/torrc'
-          
-          # تشغيل الخدمة
           sudo service tor start
-          
-          # ⚠️ التغيير المهم: ننتظر 20 ثانية بدلاً من 5 لضمان جاهزية Tor
-          echo "⏳ Waiting for Tor to establish circuit..."
+          echo "⏳ Waiting for Tor..."
           sleep 20
 
-      - name: Start Bot
-        # استخدام -u يظهر السجل فوراً، و timeout يضمن إعادة التشغيل قبل الـ 6 ساعات
+      - name: Start Bot (High Performance & GUI Fix)
         run: |
-          timeout 350m xvfb-run python -u bot_master1.py || echo "⚠️ انتهت الجلسة، جاري التجهيز للجولة التالية..."
+          # الحل النهائي لخطأ cannot connect to chrome عبر تهيئة DISPLAY وشاشة وهمية ثابتة
+          export DISPLAY=:99
+          timeout 350m xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24 -ac +extension GLX +render -noreset" python -u bot_master1.py || echo "⚠️ Session limit reached or ended"
 
       - name: Self-Restart Workflow
-        if: always() 
+        if: always() # يضمن إعادة التشغيل حتى لو فشل البوت
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          echo "🚀 أمر التشغيل الذاتي: لن يتوقف البوت أبداً!"
+          echo "🚀 Triggering self-restart..."
           gh workflow run "Run My Bot Forever"
