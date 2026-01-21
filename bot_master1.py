@@ -14,7 +14,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
 
 # ==========================================
-# ⚙️ الإعدادات الكبرى
+# ⚙️ الإعدادات الكبرى (تطابق كامل مع IP TOR + تزييف شامل)
 # ==========================================
 MAX_SESSIONS = 1000000 
 TOR_PROXY = "socks5://127.0.0.1:9050"
@@ -34,6 +34,10 @@ VIDEOS_POOL = [
     {"id": "AvH9Ig3A0Qo", "keywords": "Socotra treasure island"}
 ]
 
+# ==========================================
+# 🛠️ الوظائف الأساسية
+# ==========================================
+
 def renew_tor_ip():
     try:
         with socket.create_connection(("127.0.0.1", TOR_CONTROL_PORT)) as sig:
@@ -44,128 +48,135 @@ def renew_tor_ip():
 def get_geo_full_data():
     try:
         proxies = {'http': TOR_PROXY, 'https': TOR_PROXY}
-        # جلب بيانات متكاملة: الموقع، المنطقة الزمنية، اللغة
-        data = requests.get('http://ip-api.com/json/?fields=status,message,country,countryCode,regionName,city,lat,lon,timezone,currency,isp,query', proxies=proxies, timeout=15).json()
-        if data['status'] == 'success':
-            return data
+        # جلب بيانات تفصيلية (الموقع، الوقت، التاريخ، المنطقة الزمنية)
+        r = requests.get('http://ip-api.com/json/?fields=status,country,countryCode,city,lat,lon,timezone,query', proxies=proxies, timeout=15).json()
+        if r['status'] == 'success': return r
     except: return None
-    return None
 
-def apply_ultra_stealth(driver, device, geo):
-    # تزييف العتاد
-    cpu = random.choice([4, 6, 8, 12])
-    ram = random.choice([8, 12, 16, 32])
-    # تزييف البطارية بدقة
-    batt = round(random.uniform(0.20, 0.95), 2)
-    is_charging = "false" if batt < 0.80 else "true"
+def create_driver(profile_dir, device):
+    """ الوظيفة المحسنة لمنع أخطاء الاتصال """
+    options = uc.ChromeOptions()
+    options.add_argument(f'--user-data-dir={profile_dir}')
+    options.add_argument(f'--user-agent={device["ua"]}')
+    options.add_argument(f'--proxy-server={TOR_PROXY}')
+    options.add_argument(f"--window-size={device['w']},{device['h']}")
     
-    # بيانات الموقع واللغة
+    options.add_argument('--no-sandbox') 
+    options.add_argument('--disable-dev-shm-usage') 
+    options.add_argument('--disable-gpu')
+    options.add_argument('--remote-debugging-port=9222') 
+    options.add_argument('--headless')
+    options.add_argument('--mute-audio')
+
+    driver = uc.Chrome(options=options, use_subprocess=True)
+    return driver
+
+def apply_stealth_logic(driver, device, geo):
+    # تزييف العتاد والبطارية
+    cpu = random.choice([4, 8, 12])
+    ram = random.choice([8, 16, 32])
+    batt = round(random.uniform(0.15, 0.98), 2)
+    is_charging = random.choice(["true", "false"])
+    
+    # بيانات الموقع واللغة من الـ IP
     lang = geo['countryCode'].lower() if geo else "en"
     tz = geo['timezone'] if geo else "UTC"
     lat = geo['lat'] if geo else 0.0
     lon = geo['lon'] if geo else 0.0
 
-    stealth_script = f"""
-    // 1. تزييف الهاردوير
+    js_code = f"""
     Object.defineProperty(navigator, 'hardwareConcurrency', {{get: () => {cpu}}});
     Object.defineProperty(navigator, 'deviceMemory', {{get: () => {ram}}});
-    
-    // 2. تزييف كرت الشاشة
     const getParam = WebGLRenderingContext.prototype.getParameter;
     WebGLRenderingContext.prototype.getParameter = function(p) {{
         if (p === 37445) return 'Google Inc. (NVIDIA)';
         if (p === 37446) return '{device["gpu"]}';
         return getParam.apply(this, arguments);
     }};
-
-    // 3. تزييف البطارية 🔋
     if (navigator.getBattery) {{
         navigator.getBattery = () => Promise.resolve({{
             charging: {is_charging}, level: {batt}, chargingTime: 0, dischargingTime: Infinity
         }});
     }}
-
-    // 4. تزييف اللغة والمنطقة الزمنية 🌍
     Object.defineProperty(navigator, 'language', {{get: () => '{lang}-{lang.upper()}'}});
     Object.defineProperty(navigator, 'languages', {{get: () => ['{lang}-{lang.upper()}', '{lang}']}});
     
-    // 5. تزييف الـ GPS 📍
+    // تزييف الـ GPS 📍
     navigator.geolocation.getCurrentPosition = (success) => success({{
-        coords: {{ latitude: {lat}, longitude: {lon}, accuracy: 10, altitude: null, altitudeAccuracy: null, heading: null, speed: null }},
-        timestamp: Date.now()
+        coords: {{ latitude: {lat}, longitude: {lon}, accuracy: 100 }}
     }});
-    navigator.geolocation.watchPosition = (success) => success({{
-        coords: {{ latitude: {lat}, longitude: {lon}, accuracy: 10 }},
-        timestamp: Date.now()
-    }});
-
-    // 6. منع كشف الأتمتة
+    
     Object.defineProperty(navigator, 'webdriver', {{get: () => undefined}});
     """
-    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {"source": stealth_script})
+    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {"source": js_code})
     
-    # ضبط الوقت الفعلي للمتصفح ليطابق المنطقة الزمنية للـ IP
+    # ضبط الوقت والمنطقة الزمنية والـ GPS في المتصفح
     driver.execute_cdp_cmd("Emulation.setTimezoneOverride", {"timezoneId": tz})
-    # ضبط إحداثيات الموقع الجغرافي في المتصفح
     driver.execute_cdp_cmd("Emulation.setGeolocationOverride", {
-        "latitude": lat,
-        "longitude": lon,
-        "accuracy": 100
+        "latitude": lat, "longitude": lon, "accuracy": 100
     })
 
 def run_session(session_num):
+    # تنظيف العمليات السابقة
     os.system("pkill -f chrome 2>/dev/null || true")
-    renew_tor_ip()
     
+    renew_tor_ip()
     geo = get_geo_full_data()
     device = random.choice(DEVICES)
     video = random.choice(VIDEOS_POOL)
-    
-    # تحسين عرض البيانات 📊
-    print(f"\n" + "="*50)
-    print(f"🚀 الجلسة رقم: {session_num}")
-    print(f"🎬 فيديو: https://youtu.be/{video['id']}")
-    print(f"🌐 الـ IP الحالي: {geo['query'] if geo else 'Unknown'}")
-    print(f"📍 الموقع: {geo['city']}, {geo['country']} | 🕒 توقيت: {geo['timezone']}")
-    print(f"🗺️ GPS: {geo['lat']}, {geo['lon']}")
-    print(f"💻 الجهاز: {device['name']} | 🔋 البطارية: {random.randint(20,95)}%")
-    print(f"🌍 اللغة: {geo['countryCode'] if geo else 'EN'}")
-    print("="*50)
+    profile_dir = os.path.abspath(f"tor_profile_{session_num}_{random.randint(1000, 9999)}")
 
-    profile_dir = os.path.abspath(f"tor_profile_{session_num}_{random.randint(100,999)}")
-    
-    options = uc.ChromeOptions()
-    options.add_argument(f'--user-data-dir={profile_dir}')
-    options.add_argument(f'--user-agent={device["ua"]}')
-    options.add_argument(f'--proxy-server={TOR_PROXY}')
-    options.add_argument(f"--window-size={device['w']},{device['h']}")
-    options.add_argument('--headless') # يمكنك إزالتها إذا أردت رؤية المتصفح
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
+    # عرض البيانات المطلوبة 🚀
+    print(f"\n🚀 الجلسة #{session_num} بدأت")
+    print(f"🎬 الفـيديو: https://www.youtube.com/watch?v={video['id']}")
+    print(f"🌐 IP TOR: {geo['query'] if geo else 'Unknown'}")
+    print(f"📍 المـوقع: {geo['city']}, {geo['country']} | GPS: {geo['lat']}, {geo['lon']}")
+    print(f"🕒 التوقيت: {geo['timezone']} | 🌍 اللغة: {geo['countryCode'] if geo else '??'}")
+    print(f"💻 الجهاز: {device['name']} | 🔋 البطارية: {random.randint(20, 98)}%")
+    print("-" * 50)
 
     try:
-        driver = uc.Chrome(options=options, use_subprocess=True)
-        apply_ultra_stealth(driver, device, geo)
+        driver = create_driver(profile_dir, device)
+        apply_stealth_logic(driver, device, geo)
+        wait = WebDriverWait(driver, 30)
+
+        # الدخول لليوتيوب والبحث
+        driver.get("https://www.youtube.com")
+        time.sleep(random.randint(5, 8))
         
-        # التوجه لليوتيوب
-        driver.get(f"https://www.youtube.com/watch?v={video['id']}")
-        
-        # محاكاة الانتظار والمشاهدة
-        wait = WebDriverWait(driver, 20)
+        try:
+            # تخطي الموافقة على الخصوصية
+            btns = driver.find_elements(By.XPATH, "//button[contains(.,'Accept') or contains(.,'Agree') or contains(.,'موافق')]")
+            if btns: btns[0].click()
+            
+            # عملية البحث بالكلمات المفتاحية
+            search_box = wait.until(EC.element_to_be_clickable((By.NAME, "search_query")))
+            for char in video['keywords']:
+                search_box.send_keys(char)
+                time.sleep(random.uniform(0.1, 0.3))
+            search_box.send_keys(Keys.ENTER)
+            
+            target_video = wait.until(EC.element_to_be_clickable((By.XPATH, f"//a[contains(@href, '{video['id']}')]")))
+            target_video.click()
+        except:
+            # إذا فشل البحث، توجه للفيديو مباشرة
+            driver.get(f"https://www.youtube.com/watch?v={video['id']}")
+
+        # المشاهدة والتفاعل
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "video")))
+        driver.execute_script("document.querySelector('video').play();")
         
-        # تفاعل بشري بسيط (التمرير)
-        time.sleep(random.randint(5, 10))
-        driver.execute_script(f"window.scrollBy(0, {random.randint(200, 500)});")
+        time.sleep(random.randint(10, 20))
+        driver.execute_script(f"window.scrollBy(0, {random.randint(300, 700)});")
         
-        watch_time = random.randint(150, 240) # مدة المشاهدة
-        print(f"⏳ جاري المشاهدة لمدة {watch_time} ثانية...")
-        time.sleep(watch_time)
+        watch_duration = random.randint(120, 180)
+        print(f"⏳ جاري المشاهدة لمدة {watch_duration} ثانية...")
+        time.sleep(watch_duration)
         
-        print(f"✅ انتهت الجلسة بنجاح.")
+        print(f"✅ اكتملت الجلسة بنجاح.")
         
     except Exception as e:
-        print(f"❌ خطأ في الجلسة: {str(e)[:50]}")
+        print(f"❌ خطأ: {str(e)[:50]}")
     finally:
         try:
             driver.quit()
@@ -174,9 +185,9 @@ def run_session(session_num):
             shutil.rmtree(profile_dir, ignore_errors=True)
 
 if __name__ == "__main__":
-    print("🔥 بدأ نظام المشاهدات المتقدم - الحماية القصوى")
+    print("🔥 بدأ نظام المشاهدات الاحترافي (TOR + GPS Stealth)")
     for i in range(1, MAX_SESSIONS + 1):
         run_session(i)
-        gap = random.randint(20, 60)
-        print(f"💤 انتظار {gap} ثانية قبل الجلسة القادمة...")
-        time.sleep(gap)
+        wait_gap = random.randint(15, 45)
+        print(f"💤 انتظار {wait_gap} ثانية...")
+        time.sleep(wait_gap)
